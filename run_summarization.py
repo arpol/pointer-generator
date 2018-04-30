@@ -39,6 +39,10 @@ tf.app.flags.DEFINE_string('vocab_path', '', 'Path expression to text vocabulary
 tf.app.flags.DEFINE_string('mode', 'train', 'must be one of train/eval/decode')
 tf.app.flags.DEFINE_boolean('single_pass', False, 'For decode mode only. If True, run eval on the full dataset using a fixed checkpoint, i.e. take the current checkpoint, and use it to produce one summary for each example in the dataset, write the summaries to file and then get ROUGE scores for the whole dataset. If False (default), run concurrent decoding, i.e. repeatedly load latest checkpoint, use it to produce summaries for randomly-chosen examples and log the results to screen, indefinitely.')
 
+# Settings added for integration with other libraries:
+tf.app.flags.DEFINE_boolean('api_mode', False, 'For decode mode only.')
+tf.app.flags.DEFINE_string('pickle_file', '', 'For decode mode only.')
+
 # Where to save output
 tf.app.flags.DEFINE_string('log_root', '', 'Root directory for all logging.')
 tf.app.flags.DEFINE_string('exp_name', '', 'Name for experiment. Logs will be saved in a directory with this name, under log_root.')
@@ -269,8 +273,10 @@ def main(unused_argv):
     raise Exception("Problem with flags: %s" % unused_argv)
 
   tf.logging.set_verbosity(tf.logging.INFO) # choose what level of logging you want
-  tf.logging.info('Starting seq2seq_attention in %s mode...', (FLAGS.mode))
-
+  tf.logging.info('Starting seq2seq_attention in asdfdsaf %s mode...', (FLAGS.mode))
+  import os
+  cwd = os.getcwd()
+  tf.logging.info('Current folder %s', (cwd))
   # Change log_root to FLAGS.log_root/FLAGS.exp_name and create the dir if necessary
   FLAGS.log_root = os.path.join(FLAGS.log_root, FLAGS.exp_name)
   if not os.path.exists(FLAGS.log_root):
@@ -317,8 +323,19 @@ def main(unused_argv):
     model = SummarizationModel(decode_model_hps, vocab)
     decoder = BeamSearchDecoder(model, batcher, vocab)
     decoder.decode() # decode indefinitely (unless single_pass=True, in which case deocde the dataset exactly once)
+  elif hps.mode == 'decode_one':
+    decode_model_hps = hps  # This will be the hyperparameters for the decoder model
+    decode_model_hps = hps._replace(
+      max_dec_steps=1)  # The model is configured with max_dec_steps=1 because we only ever run one step of the decoder at a time (to do beam search). Note that the batcher is initialized with max_dec_steps equal to e.g. 100 because the batches need to contain the full summaries
+    model = SummarizationModel(decode_model_hps, vocab)
+    decoder = BeamSearchDecoder(model, batcher, vocab)
+    decoder.decode_one_article()
   else:
-    raise ValueError("The 'mode' flag must be one of train/eval/decode")
+    raise ValueError("The 'mode' flag must be one of train/eval/decode/decode_one")
 
 if __name__ == '__main__':
   tf.app.run()
+
+def run_external(argv):
+  tf.reset_default_graph()
+  tf.app.run(main=main, argv=argv)

@@ -26,6 +26,7 @@ import pyrouge
 import util
 import logging
 import numpy as np
+import pickle
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -57,8 +58,9 @@ class BeamSearchDecoder(object):
       # Make a descriptive decode directory name
       ckpt_name = "ckpt-" + ckpt_path.split('-')[-1] # this is something of the form "ckpt-123456"
       self._decode_dir = os.path.join(FLAGS.log_root, get_decode_dir_name(ckpt_name))
-      if os.path.exists(self._decode_dir):
-        raise Exception("single_pass decode directory %s should not already exist" % self._decode_dir)
+      if not FLAGS.api_mode:
+        if os.path.exists(self._decode_dir):
+          raise Exception("single_pass decode directory %s should not already exist" % self._decode_dir)
 
     else: # Generic decode dir name
       self._decode_dir = os.path.join(FLAGS.log_root, "decode")
@@ -76,6 +78,13 @@ class BeamSearchDecoder(object):
 
   def decode(self):
     """Decode examples until data is exhausted (if FLAGS.single_pass) and return, or decode indefinitely, loading latest checkpoint at regular intervals"""
+
+    # Return original articles and their summaries if in API mode:
+    if FLAGS.api_mode:
+      articles = []
+      summaries = []
+      summaries_tokens = []
+
     t0 = time.time()
     counter = 0
     while True:
@@ -84,9 +93,15 @@ class BeamSearchDecoder(object):
         assert FLAGS.single_pass, "Dataset exhausted, but we are not in single_pass mode"
         tf.logging.info("Decoder has finished reading dataset for single_pass.")
         tf.logging.info("Output has been saved in %s and %s. Now starting ROUGE eval...", self._rouge_ref_dir, self._rouge_dec_dir)
-        results_dict = rouge_eval(self._rouge_ref_dir, self._rouge_dec_dir)
-        rouge_log(results_dict, self._decode_dir)
-        return
+        if not FLAGS.api_mode:
+          results_dict = rouge_eval(self._rouge_ref_dir, self._rouge_dec_dir)
+          rouge_log(results_dict, self._decode_dir)
+          return
+        else:
+          assert FLAGS.pickle_file, "Pickle path not specified"
+          decoder_final_output = {'articles':articles, 'summaries':summaries, 'summaries_tokens': summaries_tokens}
+          pickle.dump(decoder_final_output, open(FLAGS.pickle_file, "wb"))
+          return
 
       original_article = batch.original_articles[0]  # string
       original_abstract = batch.original_abstracts[0]  # string
@@ -110,7 +125,11 @@ class BeamSearchDecoder(object):
         decoded_words = decoded_words
       decoded_output = ' '.join(decoded_words) # single string
 
-      if FLAGS.single_pass:
+      if FLAGS.api_mode:
+        articles.append(original_article)
+        summaries.append(decoded_output)
+        summaries_tokens.append(decoded_words)
+      elif FLAGS.single_pass:
         self.write_for_rouge(original_abstract_sents, decoded_words, counter) # write ref summary and decoded summary to file, to eval with pyrouge later
         counter += 1 # this is how many examples we've decoded
       else:
