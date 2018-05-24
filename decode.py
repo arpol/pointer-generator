@@ -126,9 +126,13 @@ class BeamSearchDecoder(object):
       decoded_output = ' '.join(decoded_words) # single string
 
       if FLAGS.api_mode:
+        # TODO add status printer:
         articles.append(original_article)
         summaries.append(decoded_output)
         summaries_tokens.append(decoded_words)
+        counter += 1
+        if not counter % 25:
+          print(f"{counter} articles summarized")
       elif FLAGS.single_pass:
         self.write_for_rouge(original_abstract_sents, decoded_words, counter) # write ref summary and decoded summary to file, to eval with pyrouge later
         counter += 1 # this is how many examples we've decoded
@@ -142,6 +146,8 @@ class BeamSearchDecoder(object):
           tf.logging.info('We\'ve been decoding with same checkpoint for %i seconds. Time to load new checkpoint', t1-t0)
           _ = util.load_ckpt(self._saver, self._sess)
           t0 = time.time()
+
+
 
   def write_for_rouge(self, reference_sents, decoded_words, ex_index):
     """Write output to file in correct format for eval with pyrouge. This is called in single_pass mode.
